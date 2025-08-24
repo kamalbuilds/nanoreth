@@ -525,6 +525,13 @@ tables! {
         type Key = ChainStateKey;
         type Value = BlockNumber;
     }
+
+    /// Stores precompile call data for each block.
+    /// Maps block number to serialized ReadPrecompileCalls data.
+    table BlockReadPrecompileCalls {
+        type Key = BlockNumber;
+        type Value = Vec<u8>;
+    }
 }
 
 /// Keys for the `ChainState` table.

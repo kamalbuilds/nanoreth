@@ -33,6 +33,7 @@ reth-codecs.workspace = true
 reth-evm.workspace = true
 reth-chain-state.workspace = true
 reth-node-types.workspace = true
+reth-hyperliquid-types.workspace = true
 
 # ethereum
 alloy-eips.workspace = true

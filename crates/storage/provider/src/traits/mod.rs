@@ -19,3 +19,6 @@ pub use static_file_provider::StaticFileProviderFactory;
 
 mod full;
 pub use full::{FullProvider, FullRpcProvider};
+
+mod precompile;
+pub use precompile::PrecompileCallsProvider;
