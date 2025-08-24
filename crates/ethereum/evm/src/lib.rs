@@ -195,17 +195,6 @@ impl ConfigureEvmEnv for EthEvmConfig {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub(crate) struct BlockAndReceipts {
-    #[serde(default)]
-    pub read_precompile_calls: Vec<(Address, Vec<(ReadPrecompileInput, ReadPrecompileResult)>)>,
-    pub highest_precompile_address: Option<Address>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub(crate) enum EvmBlock {
-    Reth115(SealedBlock),
-}
 
 /// Custom EVM configuration.
 #[derive(Debug, Clone, Default)]
@@ -215,43 +204,12 @@ pub struct HyperliquidEvmFactory {
     shared_state: Option<HyperliquidSharedState>,
 }
 
-pub(crate) fn collect_s3_block(ingest_path: PathBuf, height: u64) -> Option<BlockAndReceipts> {
-    let f = ((height - 1) / 1_000_000) * 1_000_000;
-    let s = ((height - 1) / 1_000) * 1_000;
-    let path = format!("{}/{f}/{s}/{height}.rmp.lz4", ingest_path.to_string_lossy());
-    let file = std::fs::read(path).ok()?;
-    let mut decoder = lz4_flex::frame::FrameDecoder::new(&file[..]);
-    let blocks: Vec<BlockAndReceipts> = rmp_serde::from_read(&mut decoder).unwrap();
-    Some(blocks[0].clone())
-}
-
 pub(crate) fn get_locally_sourced_precompiles_for_height(
     precompiles_cache: PrecompilesCache,
     height: u64,
 ) -> Option<PrecompileData> {
     let mut u_cache = precompiles_cache.lock();
     u_cache.remove(&height)
-}
-
-pub(crate) fn collect_block(
-    ingest_path: PathBuf,
-    shared_state: Option<HyperliquidSharedState>,
-    height: u64,
-) -> Option<BlockAndReceipts> {
-    // Attempt to source precompile from the cache that is shared the binary level with the block
-    // ingestor.
-    if let Some(shared_state) = shared_state {
-        if let Some(calls) =
-            get_locally_sourced_precompiles_for_height(shared_state.precompiles_cache, height)
-        {
-            return Some(BlockAndReceipts {
-                read_precompile_calls: calls.precompiles,
-                highest_precompile_address: calls.highest_precompile_address,
-            });
-        }
-    }
-    // Fallback to s3 always
-    collect_s3_block(ingest_path, height)
 }
 
 const WARM_PRECOMPILES_BLOCK_NUMBER: u64 = 8_197_684;
