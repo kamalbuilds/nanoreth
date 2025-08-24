@@ -391,7 +391,7 @@ impl<N: NetworkPrimitives> ActiveSession<N> {
         };
 
         self.terminate_message = Some((self.to_session_manager.inner().clone(), msg));
-        self.poll_terminate_message(cx).expect("message is set")
+        self.poll_terminate_message(cx).unwrap_or(Poll::Ready(()))
     }
 
     /// Report back that this session has been closed due to an error
@@ -402,7 +402,7 @@ impl<N: NetworkPrimitives> ActiveSession<N> {
             error,
         };
         self.terminate_message = Some((self.to_session_manager.inner().clone(), msg));
-        self.poll_terminate_message(cx).expect("message is set")
+        self.poll_terminate_message(cx).unwrap_or(Poll::Ready(()))
     }
 
     /// Starts the disconnect process

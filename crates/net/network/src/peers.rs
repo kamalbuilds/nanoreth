@@ -647,8 +647,11 @@ impl PeersManager {
 
             // remove peer if it has been marked for removal
             if remove_peer {
-                let (peer_id, _) = self.peers.remove_entry(peer_id).expect("peer must exist");
-                self.queued_actions.push_back(PeerAction::PeerRemoved(peer_id));
+                if let Some((peer_id, _)) = self.peers.remove_entry(peer_id) {
+                    self.queued_actions.push_back(PeerAction::PeerRemoved(peer_id));
+                } else {
+                    tracing::warn!(target: "net::peers", "Attempted to remove non-existent peer: {:?}", peer_id);
+                }
             } else if let Some(backoff_until) = backoff_until {
                 // otherwise, backoff the peer if marked as such
                 self.backoff_peer_until(*peer_id, backoff_until);

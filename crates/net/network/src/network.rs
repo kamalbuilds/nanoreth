@@ -149,7 +149,7 @@ impl<N: NetworkPrimitives> NetworkHandle<N> {
     pub async fn transactions_handle(&self) -> Option<TransactionsHandle<N>> {
         let (tx, rx) = oneshot::channel();
         let _ = self.manager().send(NetworkHandleMessage::GetTransactionsHandle(tx));
-        rx.await.unwrap()
+        rx.await.ok().flatten()
     }
 
     /// Send message to gracefully shutdown node.
@@ -266,7 +266,8 @@ impl<N: NetworkPrimitives> PeersInfo for NetworkHandle<N> {
             builder.udp6(local_node_record.udp_port);
             builder.tcp6(local_node_record.tcp_port);
         }
-        builder.build(&self.inner.secret_key).expect("valid enr")
+        builder.build(&self.inner.secret_key)
+            .expect("ENR builder should always succeed with valid IP and ports")
     }
 }
 
