@@ -51,17 +51,20 @@ struct ScanResult {
     new_blocks: Vec<BlockAndReceipts>,
 }
 
-fn scan_hour_file(path: &Path, last_line: &mut usize, start_height: u64) -> ScanResult {
+fn scan_hour_file(path: &Path, last_line: &mut usize, start_height: u64) -> Result<ScanResult, Box<dyn std::error::Error>> {
     // info!(
     //     "Scanning hour block file @ {:?} for height [{:?}] | Last Line {:?}",
     //     path, start_height, last_line
     // );
-    let file = std::fs::File::open(path).expect("Failed to open hour file path");
+    let file = std::fs::File::open(path)
+        .map_err(|e| format!("Failed to open hour file path {}: {}", path.display(), e))?;
     let reader = BufReader::new(file);
 
     let mut new_blocks = Vec::<BlockAndReceipts>::new();
     let mut last_height = start_height;
-    let lines: Vec<String> = reader.lines().collect::<Result<_, _>>().unwrap();
+    let lines: Vec<String> = reader.lines()
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("Failed to read lines from file {}: {}", path.display(), e))?;
     let skip = if *last_line == 0 { 0 } else { (last_line.clone()) - 1 };
 
     for (line_idx, line) in lines.iter().enumerate().skip(skip) {
@@ -109,7 +112,7 @@ fn scan_hour_file(path: &Path, last_line: &mut usize, start_height: u64) -> Scan
         }
     }
 
-    ScanResult { next_expected_height: last_height + 1, new_blocks }
+    Ok(ScanResult { next_expected_height: last_height + 1, new_blocks })
 }
 
 async fn submit_payload<Engine: PayloadTypes + EngineTypes>(
@@ -166,7 +169,18 @@ impl BlockIngest {
         let path = format!("{}/{f}/{s}/{height}.rmp.lz4", self.ingest_dir.to_string_lossy());
         let file = std::fs::read(path).ok()?;
         let mut decoder = lz4_flex::frame::FrameDecoder::new(&file[..]);
-        let blocks: Vec<BlockAndReceipts> = rmp_serde::from_read(&mut decoder).unwrap();
+        let blocks: Vec<BlockAndReceipts> = rmp_serde::from_read(&mut decoder)
+            .map_err(|e| {
+                tracing::error!("Failed to deserialize block data for height {}: {}", height, e);
+                e
+            })
+            .ok()?;
+        
+        if blocks.is_empty() {
+            tracing::error!("Deserialized empty blocks vector for height {}", height);
+            return None;
+        }
+        
         info!("Returning s3 synced block for @ Height [{height}]");
         Some(blocks[0].clone())
     }
@@ -200,9 +214,10 @@ impl BlockIngest {
                 let hour_file = root.join(HOURLY_SUBDIR).join(&day_str).join(format!("{hour}"));
 
                 if hour_file.exists() {
-                    let ScanResult { next_expected_height, new_blocks } =
-                        scan_hour_file(&hour_file, &mut last_line, next_height);
-                    if !new_blocks.is_empty() {
+                    let scan_result = scan_hour_file(&hour_file, &mut last_line, next_height);
+                    match scan_result {
+                        Ok(ScanResult { next_expected_height, new_blocks }) => {
+                            if !new_blocks.is_empty() {
                         let mut u_cache = cache.lock().await;
                         let mut u_pre_cache = precompiles_cache.lock();
                         for blk in new_blocks {
@@ -220,6 +235,12 @@ impl BlockIngest {
                             u_pre_cache.insert(h, precompiles);
                         }
                         next_height = next_expected_height;
+                    }
+                        }
+                        Err(e) => {
+                            tracing::error!("Failed to scan hour file {}: {}", hour_file.display(), e);
+                            // Continue processing but skip this file
+                        }
                     }
                 }
 

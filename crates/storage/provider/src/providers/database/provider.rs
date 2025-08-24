@@ -2278,7 +2278,16 @@ impl<TX: DbTxMut + DbTx + 'static, N: NodeTypesForProvider> StateWriter
             let mut block_receipts = Vec::with_capacity(block_body.tx_count as usize);
             for num in block_body.tx_num_range() {
                 if receipts_iter.peek().is_some_and(|(n, _)| *n == num) {
-                    block_receipts.push(receipts_iter.next().unwrap().1);
+                    // Safe to unwrap here since we just peeked and confirmed it exists
+                    // However, for maximum safety in database operations, we still handle it
+                    if let Some((_, receipt)) = receipts_iter.next() {
+                        block_receipts.push(receipt);
+                    } else {
+                        // This should never happen based on peek(), but handle gracefully
+                        return Err(ProviderError::Database(reth_db::DatabaseError::Other(
+                            "Receipt iterator state mismatch during state reconstruction".into()
+                        )));
+                    }
                 }
             }
             receipts.push(block_receipts);
@@ -3070,9 +3079,13 @@ impl<TX: DbTxMut + DbTx + 'static, N: NodeTypesForProvider + 'static> BlockWrite
             return Ok(());
         }
 
-        let first_number = blocks.first().unwrap().number();
+        // Safe to unwrap after empty check, but use defensive programming for critical DB ops
+        let first_number = blocks.first()
+            .expect("Blocks vector guaranteed non-empty after length check")
+            .number();
 
-        let last = blocks.last().unwrap();
+        let last = blocks.last()
+            .expect("Blocks vector guaranteed non-empty after length check");
         let last_block_number = last.number();
 
         let mut durations_recorder = metrics::DurationsRecorder::default();
