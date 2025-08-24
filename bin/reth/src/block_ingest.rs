@@ -131,7 +131,8 @@ async fn submit_payload<Engine: PayloadTypes + EngineTypes>(
             engine_api_client,
             envelope.execution_payload,
             versioned_hashes,
-            payload_builder_attributes.parent_beacon_block_root.unwrap(),
+            payload_builder_attributes.parent_beacon_block_root
+                .ok_or("Missing required parent_beacon_block_root")?,
         )
         .await?
     };
@@ -147,7 +148,9 @@ fn datetime_from_timestamp(ts_sec: u64) -> OffsetDateTime {
 }
 
 fn date_from_datetime(dt: OffsetDateTime) -> String {
-    dt.format(&format_description::parse("[year][month][day]").unwrap()).unwrap()
+    // Format string is constant and guaranteed to be valid
+    dt.format(&format_description::parse("[year][month][day]").expect("Valid format string"))
+        .expect("DateTime formatting should always succeed with valid format")
 }
 
 impl BlockIngest {
@@ -200,11 +203,11 @@ impl BlockIngest {
             let mut next_height = current_head;
             let mut dt = datetime_from_timestamp(current_ts)
                 .replace_minute(0)
-                .unwrap()
+                .expect("Valid minute replacement")
                 .replace_second(0)
-                .unwrap()
+                .expect("Valid second replacement")
                 .replace_nanosecond(0)
-                .unwrap();
+                .expect("Valid nanosecond replacement");
 
             let mut hour = dt.hour();
             let mut day_str = date_from_datetime(dt);
@@ -290,8 +293,10 @@ impl BlockIngest {
 
         let mut height = head + 1;
         let mut previous_hash = provider.block_hash(head)?.unwrap_or(genesis_hash);
-        let mut previous_timestamp =
-            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis();
+        let mut previous_timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("System time should be after UNIX epoch")
+            .as_millis();
 
         let engine_api = node.auth_server_handle().http_client();
         let mut evm_map = erc20_contract_to_spot_token(node.chain_spec().chain_id()).await?;
@@ -299,8 +304,8 @@ impl BlockIngest {
         const MINIMUM_TIMESTAMP: u64 = 1739849780;
         let current_block_timestamp: u64 = provider
             .block_by_number(head)
-            .expect("Failed to fetch current block in db")
-            .expect("Block does not exist")
+            .map_err(|e| format!("Database error fetching block {}: {}", head, e))?
+            .ok_or_else(|| format!("Block {} does not exist in database", head))?
             .into_header()
             .timestamp();
 
@@ -397,11 +402,11 @@ impl BlockIngest {
 
                 let current_timestamp = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap()
+                    .expect("System time should be after UNIX epoch")
                     .as_millis();
 
                 if height % 100 == 0 || current_timestamp - previous_timestamp > 100 {
-                    EngineApiClient::<Engine>::fork_choice_updated_v2(
+                    if let Err(e) = EngineApiClient::<Engine>::fork_choice_updated_v2(
                         &engine_api,
                         ForkchoiceState {
                             head_block_hash: block_hash,
@@ -410,8 +415,10 @@ impl BlockIngest {
                         },
                         None,
                     )
-                    .await
-                    .unwrap();
+                    .await {
+                        tracing::error!("Failed to update fork choice for block {}: {}", height, e);
+                        // Continue processing but log the failure - don't panic the entire blockchain
+                    }
                     previous_timestamp = current_timestamp;
                 }
                 previous_hash = block_hash;
