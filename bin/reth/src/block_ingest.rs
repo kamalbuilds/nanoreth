@@ -207,7 +207,7 @@ impl BlockIngest {
                         let mut u_pre_cache = precompiles_cache.lock();
                         for blk in new_blocks {
                             let precompiles = PrecompileData {
-                                precompiles: blk.read_precompile_calls.clone(),
+                                precompiles: blk.read_precompile_calls.0.clone(),
                                 highest_precompile_address: blk.highest_precompile_address,
                             };
                             let h = match &blk.block {

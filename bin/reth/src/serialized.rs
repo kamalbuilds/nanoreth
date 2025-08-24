@@ -1,5 +1,5 @@
 use alloy_primitives::{Address, Log};
-use reth_hyperliquid_types::{ReadPrecompileInput, ReadPrecompileResult};
+use reth_hyperliquid_types::{ReadPrecompileInput, ReadPrecompileResult, ReadPrecompileCalls};
 use reth_primitives::{SealedBlock, Transaction};
 use serde::{Deserialize, Serialize};
 
@@ -10,7 +10,7 @@ pub(crate) struct BlockAndReceipts {
     #[serde(default)]
     pub system_txs: Vec<SystemTx>,
     #[serde(default)]
-    pub read_precompile_calls: Vec<(Address, Vec<(ReadPrecompileInput, ReadPrecompileResult)>)>,
+    pub read_precompile_calls: ReadPrecompileCalls,
     pub highest_precompile_address: Option<Address>,
 }
 

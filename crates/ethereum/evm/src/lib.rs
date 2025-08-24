@@ -30,7 +30,6 @@ use reth_evm::{ConfigureEvm, ConfigureEvmEnv, EvmEnv, EvmFactory, NextBlockEnvAt
 use reth_hyperliquid_types::PrecompileData;
 use reth_hyperliquid_types::{PrecompilesCache, ReadPrecompileInput, ReadPrecompileResult};
 use reth_node_builder::HyperliquidSharedState;
-use reth_primitives::SealedBlock;
 use reth_primitives::TransactionSigned;
 use reth_revm::context::result::{EVMError, HaltReason};
 use reth_revm::handler::EthPrecompiles;
@@ -43,7 +42,6 @@ use reth_revm::{
     specification::hardfork::SpecId,
 };
 use reth_revm::{Context, Inspector, MainContext};
-use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -223,28 +221,33 @@ impl EvmFactory<EvmEnv> for HyperliquidEvmFactory {
     type Context<DB: Database> = EthEvmContext<DB>;
 
     fn create_evm<DB: Database>(&self, db: DB, input: EvmEnv) -> Self::Evm<DB, NoOpInspector> {
-        let block = collect_block(
-            self.ingest_dir.clone().unwrap(),
-            self.shared_state.clone(),
-            input.block_env.number,
-        )
-        .expect("Failed to collect a submitted block. If sourcing locally, make sure your local hl-node is producing blocks.");
-        let mut cache: HashMap<_, _> = block
-            .read_precompile_calls
-            .into_iter()
-            .map(|(address, calls)| (address, HashMap::from_iter(calls.into_iter())))
-            .collect();
+        // Try to get precompile data from the shared state cache
+        // This avoids the overhead of loading block data on every EVM creation
+        let mut cache: HashMap<_, _> = HashMap::new();
+        
+        if let Some(ref shared_state) = self.shared_state {
+            if let Some(precompile_data) = get_locally_sourced_precompiles_for_height(
+                shared_state.precompiles_cache.clone(),
+                input.block_env.number,
+            ) {
+                cache = precompile_data
+                    .precompiles
+                    .into_iter()
+                    .map(|(address, calls)| (address, HashMap::from_iter(calls.into_iter())))
+                    .collect();
 
-        if input.block_env.number >= WARM_PRECOMPILES_BLOCK_NUMBER {
-            let highest_precompile_address = block
-                .highest_precompile_address
-                .unwrap_or(address!("0x000000000000000000000000000000000000080d"));
-            for i in 0x800.. {
-                let address = Address::from(U160::from(i));
-                if address > highest_precompile_address {
-                    break;
+                if input.block_env.number >= WARM_PRECOMPILES_BLOCK_NUMBER {
+                    let highest_precompile_address = precompile_data
+                        .highest_precompile_address
+                        .unwrap_or(address!("0x000000000000000000000000000000000000080d"));
+                    for i in 0x800.. {
+                        let address = Address::from(U160::from(i));
+                        if address > highest_precompile_address {
+                            break;
+                        }
+                        cache.entry(address).or_insert(HashMap::new());
+                    }
                 }
-                cache.entry(address).or_insert(HashMap::new());
             }
         }
 
