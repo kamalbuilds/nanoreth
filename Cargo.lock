@@ -7971,9 +7971,11 @@ name = "reth-hyperliquid-types"
 version = "1.2.0"
 dependencies = [
  "alloy-primitives",
+ "alloy-rlp",
  "clap",
  "parking_lot",
  "reth-cli-commands",
+ "rmp-serde",
  "serde",
  "tokio",
 ]
@@ -9059,6 +9061,7 @@ dependencies = [
  "reth-evm",
  "reth-execution-types",
  "reth-fs-util",
+ "reth-hyperliquid-types",
  "reth-metrics",
  "reth-network-p2p",
  "reth-nippy-jar",
